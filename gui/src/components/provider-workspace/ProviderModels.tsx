@@ -7,7 +7,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useT } from "../../i18n/shared";
 import type { WorkspaceItem } from "../../provider-workspace/catalog";
 import { filterModels } from "../../provider-workspace/report";
-import { IconTrash } from "../../icons";
+import { IconEyeOff, IconTrash } from "../../icons";
 import { putModelVisibility } from "../../model-visibility";
 import { encodedModelIdCollides } from "../../../../src/providers/slug-codec";
 
@@ -178,8 +178,8 @@ export default function ProviderModels({
   };
 
   const removeModel = async (modelId: string) => {
-    if (removingModelId || !window.confirm(t("models.customDeleteConfirm", { name: modelId }))) return;
     const customModel = customModels.find(model => model.modelId === modelId && model.id);
+    if (removingModelId || !window.confirm(t(customModel ? "models.customDeleteConfirm" : "models.hideConfirm", { name: modelId }))) return;
     const visibilityTarget = { id: modelId, ...(item.name === "openai" ? { native: true } : {}) };
     setRemovingModelId(modelId);
     setCustomError("");
@@ -307,7 +307,9 @@ export default function ProviderModels({
           {visibleModels.map(modelId => {
             const isDefault = modelId === item.defaultModel;
             const isSelected = selectedSet.has(modelId);
+            const isCustom = customModels.some(model => model.modelId === modelId && model.id);
             const copied = copiedId === modelId;
+            const removeLabel = t(isCustom ? "models.customDelete" : "models.hide");
             return (
               <li key={modelId} className="pws-model-chip">
                 <button
@@ -326,10 +328,12 @@ export default function ProviderModels({
                   className="btn btn-ghost btn-sm btn-icon-only"
                   onClick={() => { void removeModel(modelId); }}
                   disabled={customSaving || removingModelId !== null}
-                  aria-label={t("models.customDelete")}
-                  title={t("models.customDelete")}
+                  aria-label={removeLabel}
+                  title={removeLabel}
                 >
-                  <IconTrash style={{ width: 13, height: 13 }} aria-hidden="true" />
+                  {isCustom
+                    ? <IconTrash style={{ width: 13, height: 13 }} aria-hidden="true" />
+                    : <IconEyeOff style={{ width: 13, height: 13 }} aria-hidden="true" />}
                 </button>
               </li>
             );

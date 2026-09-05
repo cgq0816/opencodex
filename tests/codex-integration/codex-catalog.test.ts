@@ -599,6 +599,18 @@ describe("combo catalog capability intersection", () => {
       .toEqual([]);
   });
 
+  test("filters dashboard-hidden provider models before catalog sync", () => {
+    const models = [
+      { provider: "vendor", id: "visible-model" },
+      { provider: "vendor", id: "hidden-model" },
+    ];
+
+    expect(filterCatalogVisibleModels(models, {
+      disabledModels: ["vendor/hidden-model"],
+      providers: { vendor: {} },
+    })).toEqual([{ provider: "vendor", id: "visible-model" }]);
+  });
+
   test("repairs a provider row after its shadowing combo alias is disabled", () => {
     const alias = "vendor/deepseek-v4-flash";
     const combo = deriveComboCatalogModel(

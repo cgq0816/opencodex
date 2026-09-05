@@ -299,7 +299,7 @@ test("a custom model stays visible when its visibility update fails", async () =
   await act(async () => { root.unmount(); });
 });
 
-test("discovered models can be removed from the local catalog", async () => {
+test("discovered models are labeled as hidden and removed from the local catalog", async () => {
   const requests: Array<{ url: string; method: string; body: unknown }> = [];
   globalThis.fetch = (async (input, init) => {
     if (!init?.method || init.method === "GET") return Response.json([]);
@@ -310,7 +310,11 @@ test("discovered models can be removed from the local catalog", async () => {
     });
     return Response.json({ ok: true });
   }) as typeof fetch;
-  testWindow.confirm = () => true;
+  let confirmation = "";
+  testWindow.confirm = message => {
+    confirmation = String(message);
+    return true;
+  };
 
   let refreshes = 0;
   const { root, container } = await mountProviderModels(
@@ -321,11 +325,14 @@ test("discovered models can be removed from the local catalog", async () => {
 
   const discoveredChip = [...container.querySelectorAll(".pws-model-chip")]
     .find(chip => chip.querySelector(".pws-model-id")?.textContent === "claude-sonnet-5")!;
+  const hideButton = discoveredChip.querySelector<HTMLButtonElement>('button[aria-label="Hide"]')!;
+  expect(hideButton.title).toBe("Hide");
   await act(async () => {
-    discoveredChip.querySelector<HTMLButtonElement>('button[aria-label="Delete"]')!.click();
+    hideButton.click();
     await Promise.resolve();
   });
 
+  expect(confirmation).toBe("Hide the claude-sonnet-5 model from the catalog?");
   expect(requests).toEqual([{
     url: "http://localhost:10100/api/model-visibility",
     method: "PUT",
@@ -363,7 +370,7 @@ test("native OpenAI models use a native visibility target when removed", async (
   await act(async () => { await Promise.resolve(); });
 
   await act(async () => {
-    container.querySelector<HTMLButtonElement>('button[aria-label="Delete"]')!.click();
+    container.querySelector<HTMLButtonElement>('button[aria-label="Hide"]')!.click();
     await Promise.resolve();
   });
 
