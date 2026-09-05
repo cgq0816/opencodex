@@ -5,6 +5,7 @@ import type { Root } from "react-dom/client";
 import { LanguageProvider } from "../src/i18n/provider";
 import ProviderModels from "../src/components/provider-workspace/ProviderModels";
 import type { WorkspaceItem } from "../src/provider-workspace/catalog";
+import { countAvailableModels } from "../src/provider-workspace/usage";
 
 const globals = ["document", "window", "navigator", "localStorage", "IS_REACT_ACT_ENVIRONMENT"] as const;
 const originalFetch = globalThis.fetch;
@@ -40,11 +41,17 @@ const item = {
   defaultModel: "claude-opus-5",
 } as WorkspaceItem;
 
+test("provider model counts exclude removed models", () => {
+  expect(countAvailableModels({ available: { vendor: ["a", "b", "c"] }, disabled: { vendor: ["b"] } }))
+    .toEqual({ vendor: 2 });
+});
+
 async function mountProviderModels(
   availableModels = ["claude-opus-5"],
   onRetryModels?: () => void,
   providerItem = item,
   hasLiveModels = true,
+  disabledModels: string[] = [],
 ): Promise<{ root: Root; container: HTMLElement; input: HTMLInputElement; addButton: HTMLButtonElement }> {
   const container = document.createElement("div");
   document.body.append(container);
@@ -59,6 +66,7 @@ async function mountProviderModels(
           availableModels={availableModels}
           hasLiveModels={hasLiveModels}
           selectedModels={[]}
+          disabledModels={disabledModels}
           apiBase="http://localhost:10100"
           onRetryModels={onRetryModels}
         />
@@ -201,6 +209,108 @@ test("custom-only catalog keeps configured fallback models visible", async () =>
 
   const modelIds = [...container.querySelectorAll(".pws-model-id")].map(node => node.textContent);
   expect(modelIds).toEqual(["claude-opus-5", "claude-opus-5.1-custom"]);
+
+  await act(async () => { root.unmount(); });
+});
+
+test("custom models use their stable id when deleted", async () => {
+  const requests: Array<{ url: string; method: string }> = [];
+  globalThis.fetch = (async (input, init) => {
+    if (!init?.method || init.method === "GET") {
+      return Response.json([
+        { id: "custom-1", provider: "AiCodeWith", modelId: "claude-opus-5.1-custom" },
+      ]);
+    }
+    requests.push({ url: String(input), method: init.method });
+    return Response.json({ ok: true });
+  }) as typeof fetch;
+  testWindow.confirm = () => true;
+
+  let refreshes = 0;
+  const { root, container } = await mountProviderModels(
+    ["claude-opus-5", "claude-opus-5.1-custom"],
+    () => { refreshes += 1; },
+  );
+  await act(async () => { await Promise.resolve(); });
+
+  const customChip = [...container.querySelectorAll(".pws-model-chip")]
+    .find(chip => chip.querySelector(".pws-model-id")?.textContent === "claude-opus-5.1-custom")!;
+  const deleteButton = customChip.querySelector<HTMLButtonElement>('button[aria-label="Delete"]')!;
+  await act(async () => {
+    deleteButton.click();
+    await Promise.resolve();
+  });
+
+  expect(requests).toEqual([{
+    url: "http://localhost:10100/api/custom-models/custom-1",
+    method: "DELETE",
+  }]);
+  expect(refreshes).toBe(1);
+  expect([...container.querySelectorAll(".pws-model-id")].map(node => node.textContent))
+    .toEqual(["claude-opus-5"]);
+  expect(container.querySelector('[role="status"]')?.textContent).toContain("Custom model deleted");
+
+  await act(async () => { root.unmount(); });
+});
+
+test("discovered models can be removed from the local catalog", async () => {
+  const requests: Array<{ url: string; method: string; body: unknown }> = [];
+  globalThis.fetch = (async (input, init) => {
+    if (!init?.method || init.method === "GET") return Response.json([]);
+    requests.push({
+      url: String(input),
+      method: init.method,
+      body: typeof init.body === "string" ? JSON.parse(init.body) : undefined,
+    });
+    return Response.json({ ok: true });
+  }) as typeof fetch;
+  testWindow.confirm = () => true;
+
+  let refreshes = 0;
+  const { root, container } = await mountProviderModels(
+    ["claude-opus-5", "claude-sonnet-5"],
+    () => { refreshes += 1; },
+  );
+  await act(async () => { await Promise.resolve(); });
+
+  const discoveredChip = [...container.querySelectorAll(".pws-model-chip")]
+    .find(chip => chip.querySelector(".pws-model-id")?.textContent === "claude-sonnet-5")!;
+  await act(async () => {
+    discoveredChip.querySelector<HTMLButtonElement>('button[aria-label="Delete"]')!.click();
+    await Promise.resolve();
+  });
+
+  expect(requests).toEqual([{
+    url: "http://localhost:10100/api/model-visibility",
+    method: "PUT",
+    body: {
+      scope: "models",
+      provider: "AiCodeWith",
+      targets: [{ id: "claude-sonnet-5" }],
+      enabled: false,
+    },
+  }]);
+  expect(refreshes).toBe(1);
+  expect([...container.querySelectorAll(".pws-model-id")].map(node => node.textContent))
+    .toEqual(["claude-opus-5"]);
+  expect(container.querySelector('[role="status"]')?.textContent).toContain("Applied");
+
+  await act(async () => { root.unmount(); });
+});
+
+test("disabled discovered models stay out of the provider model list", async () => {
+  globalThis.fetch = (async () => Response.json([])) as typeof fetch;
+  const { root, container } = await mountProviderModels(
+    ["claude-opus-5", "claude-sonnet-5"],
+    undefined,
+    item,
+    true,
+    ["claude-sonnet-5"],
+  );
+  await act(async () => { await Promise.resolve(); });
+
+  expect([...container.querySelectorAll(".pws-model-id")].map(node => node.textContent))
+    .toEqual(["claude-opus-5"]);
 
   await act(async () => { root.unmount(); });
 });
