@@ -213,15 +213,19 @@ test("custom-only catalog keeps configured fallback models visible", async () =>
   await act(async () => { root.unmount(); });
 });
 
-test("custom models use their stable id when deleted", async () => {
-  const requests: Array<{ url: string; method: string }> = [];
+test("custom models use their stable id and persist discovered-model visibility when deleted", async () => {
+  const requests: Array<{ url: string; method: string; body: unknown }> = [];
   globalThis.fetch = (async (input, init) => {
     if (!init?.method || init.method === "GET") {
       return Response.json([
         { id: "custom-1", provider: "AiCodeWith", modelId: "claude-opus-5.1-custom" },
       ]);
     }
-    requests.push({ url: String(input), method: init.method });
+    requests.push({
+      url: String(input),
+      method: init.method,
+      body: typeof init.body === "string" ? JSON.parse(init.body) : undefined,
+    });
     return Response.json({ ok: true });
   }) as typeof fetch;
   testWindow.confirm = () => true;
@@ -239,16 +243,58 @@ test("custom models use their stable id when deleted", async () => {
   await act(async () => {
     deleteButton.click();
     await Promise.resolve();
+    await Promise.resolve();
   });
 
-  expect(requests).toEqual([{
-    url: "http://localhost:10100/api/custom-models/custom-1",
-    method: "DELETE",
-  }]);
+  expect(requests).toEqual([
+    {
+      url: "http://localhost:10100/api/custom-models/custom-1",
+      method: "DELETE",
+      body: undefined,
+    },
+    {
+      url: "http://localhost:10100/api/model-visibility",
+      method: "PUT",
+      body: {
+        scope: "models",
+        provider: "AiCodeWith",
+        targets: [{ id: "claude-opus-5.1-custom" }],
+        enabled: false,
+      },
+    },
+  ]);
   expect(refreshes).toBe(1);
   expect([...container.querySelectorAll(".pws-model-id")].map(node => node.textContent))
     .toEqual(["claude-opus-5"]);
   expect(container.querySelector('[role="status"]')?.textContent).toContain("Custom model deleted");
+
+  await act(async () => { root.unmount(); });
+});
+
+test("a custom model stays visible when its visibility update fails", async () => {
+  globalThis.fetch = (async (_input, init) => {
+    if (!init?.method || init.method === "GET") {
+      return Response.json([
+        { id: "custom-1", provider: "AiCodeWith", modelId: "claude-opus-5.1-custom" },
+      ]);
+    }
+    if (init.method === "DELETE") return Response.json({ ok: true });
+    return Response.json({ error: "failed" }, { status: 500 });
+  }) as typeof fetch;
+  testWindow.confirm = () => true;
+
+  const { root, container } = await mountProviderModels(["claude-opus-5.1-custom"]);
+  await act(async () => { await Promise.resolve(); });
+
+  await act(async () => {
+    container.querySelector<HTMLButtonElement>('button[aria-label="Delete"]')!.click();
+    await Promise.resolve();
+    await Promise.resolve();
+  });
+
+  expect([...container.querySelectorAll(".pws-model-id")].map(node => node.textContent))
+    .toEqual(["claude-opus-5.1-custom"]);
+  expect(container.querySelector('[role="alert"]')?.textContent).toContain("Save failed");
 
   await act(async () => { root.unmount(); });
 });
@@ -294,6 +340,39 @@ test("discovered models can be removed from the local catalog", async () => {
   expect([...container.querySelectorAll(".pws-model-id")].map(node => node.textContent))
     .toEqual(["claude-opus-5"]);
   expect(container.querySelector('[role="status"]')?.textContent).toContain("Applied");
+
+  await act(async () => { root.unmount(); });
+});
+
+test("native OpenAI models use a native visibility target when removed", async () => {
+  const requests: unknown[] = [];
+  globalThis.fetch = (async (_input, init) => {
+    if (!init?.method || init.method === "GET") return Response.json([]);
+    requests.push(typeof init.body === "string" ? JSON.parse(init.body) : undefined);
+    return Response.json({ ok: true });
+  }) as typeof fetch;
+  testWindow.confirm = () => true;
+  const openAiItem = {
+    ...item,
+    name: "openai",
+    models: ["gpt-5.5"],
+    defaultModel: "gpt-5.5",
+  } as WorkspaceItem;
+
+  const { root, container } = await mountProviderModels(["gpt-5.5"], undefined, openAiItem);
+  await act(async () => { await Promise.resolve(); });
+
+  await act(async () => {
+    container.querySelector<HTMLButtonElement>('button[aria-label="Delete"]')!.click();
+    await Promise.resolve();
+  });
+
+  expect(requests).toEqual([{
+    scope: "models",
+    provider: "openai",
+    targets: [{ id: "gpt-5.5", native: true }],
+    enabled: false,
+  }]);
 
   await act(async () => { root.unmount(); });
 });

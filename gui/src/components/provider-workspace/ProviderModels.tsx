@@ -180,22 +180,30 @@ export default function ProviderModels({
   const removeModel = async (modelId: string) => {
     if (removingModelId || !window.confirm(t("models.customDeleteConfirm", { name: modelId }))) return;
     const customModel = customModels.find(model => model.modelId === modelId && model.id);
+    const visibilityTarget = { id: modelId, ...(item.name === "openai" ? { native: true } : {}) };
     setRemovingModelId(modelId);
     setCustomError("");
     setCustomSuccess("");
     try {
-      const response = customModel?.id
-        ? await fetch(`${apiBase}/api/custom-models/${encodeURIComponent(customModel.id)}`, { method: "DELETE" })
-        : await putModelVisibility(apiBase, "models", item.name, [{ id: modelId }], false);
-      if (response.ok) {
+      if (customModel?.id) {
+        const deleteResponse = await fetch(`${apiBase}/api/custom-models/${encodeURIComponent(customModel.id)}`, { method: "DELETE" });
+        if (!deleteResponse.ok) {
+          setCustomError(t("models.customSaveFailed"));
+          return;
+        }
         setCustomModels(models => models.filter(model => model.modelId !== modelId));
-        setRemovedModelIds(ids => new Set(ids).add(modelId));
-        setCustomSuccess(t(customModel ? "models.customDeleted" : "models.applied"));
-        onRetryModels?.();
-      } else {
-        setCustomError(t(customModel ? "models.customSaveFailed" : "models.saveFailed"));
       }
+      const visibilityResponse = await putModelVisibility(apiBase, "models", item.name, [visibilityTarget], false);
+      if (!visibilityResponse.ok) {
+        onRetryModels?.();
+        setCustomError(t("models.saveFailed"));
+        return;
+      }
+      setRemovedModelIds(ids => new Set(ids).add(modelId));
+      setCustomSuccess(t(customModel ? "models.customDeleted" : "models.applied"));
+      onRetryModels?.();
     } catch {
+      onRetryModels?.();
       setCustomError(t("models.networkError"));
     } finally {
       setRemovingModelId(null);
