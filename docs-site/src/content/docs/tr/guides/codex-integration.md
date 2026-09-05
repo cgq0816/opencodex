@@ -354,8 +354,8 @@ sırayla kontrol edin:
    `/v1/models` listesinden gizler ve yalın yerel GPT slug'larını `visibility:
    "hide"` olarak değiştirir.
 3. **Boş `models` ile `liveModels: false`** — canlı keşif kapalı olduğunda ve
-   `models` boş veya atlandığında opencodex bu sağlayıcı için hiçbir
-   yönlendirilmiş model göstermez.
+   `models` boş veya atlandığında opencodex yapılandırılmış `defaultModel`'ı gösterir;
+   bu da yoksa yönlendirilmiş model göstermez.
 4. **Cursor `GetUsableModels`** — Cursor adaptörü modelleri `/models` üzerinden
    değil, protobuf `GetUsableModels` RPC'si üzerinden keşfeder; bu nedenle
    Cursor tarafındaki bir değişiklik diğer sağlayıcılardan bağımsız olarak hangi
