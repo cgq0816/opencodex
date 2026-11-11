@@ -86,7 +86,7 @@ Manual navigation is defined in `docs-site/astro.config.mjs`. When adding a publ
 sidebar and either add localized copies or intentionally accept Starlight fallback behavior.
 
 Provider preset totals are recounted from the current registry when a preset lands. The
-documented split is 106 total: 85 key-based, 17 OAuth, three local, and one default
+documented split is 107 total: 86 key-based, 17 OAuth, three local, and one default
 ChatGPT-forward preset. The English provider guide, all seven translated copies, and all eight
 quickstarts carry the same counts.
 
@@ -147,7 +147,7 @@ released history remains reachable through tags. No repository setting change or
 deploy is implied by this documentation.
 
 Service lifecycle evidence includes the legacy CLI entrypoint `src/cli.ts` as well as the
-service implementation and desktop packaging paths.
+service implementation and desktop packaging paths. `validate-dispatch` in `release.yml` checks it with the CI evidence before any packaging job starts, and `verify-npm` and `publish` recheck it; a missing run fails with the `gh workflow run service-lifecycle.yml --ref dev -f source_sha=<sha>` command.
 
 > Decision record: [ADR-0080](../decisions/ADR-0080-github-pages.md)
 
@@ -242,7 +242,7 @@ full-suite runs, both macOS paths, and `scripts/ci/run-bun-test-batches.sh` exec
 alone with fresh process homes, including launchd repair and standalone home/lease cases. Hosted batches assign shard membership by the per-file durations
 in `scripts/ci/test-durations.tsv` (Windows: `scripts/ci/test-durations.windows.tsv`; sorted round-robin when nothing is recorded), run each shard's
 files in sorted order and split only process boundaries; every selected file still runs once.
-Ordinary macOS shards select 1/4, 2/4, 3/4 and 4/4 from the full file list; macOS control selects 1/1. Both
+Ordinary macOS shards select 1/4, 2/4, 3/4 and 4/4 from the full file list; macOS control (dispatched only as `lane=macos-control`) selects 1/1. Both
 execute sequential batches of at most 12 files with one worker.
 Storage-policy and API-usage families run as singletons, as do manifest-declared files.
 This preserves full test membership but does not claim cross-batch shared-process coverage.
